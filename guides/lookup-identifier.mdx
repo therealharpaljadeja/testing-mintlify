@@ -1,0 +1,141 @@
+---
+title: Lookup Identifier
+description: How to lookup an identifier using Viem and @celo/identity
+---
+
+SocialConnect protocol only store the obfuscated version of the identifiers on-chain. In order to go from plaintext identifier to its obfuscated version you need to interact with ODIS API.
+
+Once you have the obfuscated identifier you need to decide under which Issuer to search for the account.
+
+The following steps will help you find an account address from a plaintext identifier.
+
+<Note>
+  You can install `@celo/identity` package using the following command
+
+```bash
+npm i @celo/identity
+```
+
+</Note>
+
+<Steps>
+
+  <Step title="Get the obfuscated identifier from plaintext identifier">
+      ```js
+      import {
+        createWalletClient
+        getContract,
+        http,
+        Hex,
+        http
+      } from "viem";
+      import { IdentifierPrefix } from "@celo/identity/lib/odis/identifier";
+      import { AuthenticationMethod, OdisContextName } from "@celo/identity/lib/odis/query";
+      import { OdisUtils } from "@celo/identity";
+      import { celo, celoAlfajores } from "viem/chains";
+
+      let account = privateKeyToAccount(process.env.ISSUER_PRIVATE_KEY as Hex);
+
+      const chain =
+        process.env.NEXT_PUBLIC_ENVIRONMENT === "TESTNET" ? celoAlfajores : celo;
+
+
+      let wallet = createWalletClient({
+        account,
+        chain,
+        transport: http(),
+      });
+
+      const identifier = "+1234567890"; // Dummy
+      const identifierType = IdentifierPrefix.PHONE_NUMBER;
+
+      const SERVICE_CONTEXT =
+        process.env.NEXT_PUBLIC_ENVIRONMENT === "TESTNET"
+        ? OdisContextName.ALFAJORES
+        : OdisContextName.MAINNET;
+
+      const serviceContext = OdisUtils.Query.getServiceContext(SERVICE_CONTEXT);
+
+      const authSigner = {
+        authenticationMethod: AuthenticationMethod.ENCRYPTION_KEY,
+
+        // Use the recommended authentication method to save on ODIS quota
+        // For steps to set up DEK, refer to the provided GitHub link - https://github.com/celo-org/social-connect/blob/main/docs/key-setup.md
+        rawKey: process.env.DEK_PRIVATE_KEY as string,
+      }
+
+      async function getAccountAddress() {
+        return (await wallet.getAddresses())[0];
+      }
+
+      async function getObfuscatedId(plaintextId) {
+        let accountAddress = await getAccountAddress();
+
+        const { obfuscatedIdentifier } =
+          await OdisUtils.Identifier.getObfuscatedIdentifier(
+            plaintextId,
+            identifierType,
+            accountAddress,
+            authSigner,
+            serviceContext
+          );
+
+        return obfuscatedIdentifier;
+      }
+    ```
+
+  </Step>
+
+  <Step title="Lookup the obfuscated identifier in FederatedAttestations.sol">
+
+```js
+import {
+  createWalletClient
+  getContract,
+  http,
+  Hex,
+  http
+} from "viem";
+import { federatedAttestationsABI } from "@celo/abis";
+import { celo, celoAlfajores } from "viem/chains";
+
+const chain =
+  process.env.NEXT_PUBLIC_ENVIRONMENT === "TESTNET" ? celoAlfajores : celo;
+
+
+let wallet = createWalletClient({
+  account,
+  chain,
+  transport: http(),
+});
+
+const FA_PROXY_ADDRESS =
+  process.env.NEXT_PUBLIC_ENVIRONMENT === "TESTNET"
+    ? "0x70F9314aF173c246669cFb0EEe79F9Cfd9C34ee3"
+    : "0x0aD5b1d0C25ecF6266Dd951403723B2687d6aff2";
+
+const federatedAttestationsContract = getContract({
+    address: FA_PROXY_ADDRESS,
+    abi: federatedAttestationsABI,
+    client: wallet,
+});
+
+async function lookup(plaintextId){
+
+  const obfuscatedId = getObfuscatedId(plaintextId); // getObfuscatedId code above
+
+  const issuerAddresses = ["0x..."] // Issuer under which you want to lookup the identifier
+
+  const attestations =
+    await federatedAttestationsContract.read.lookupAttestations([
+      obfuscatedId,
+      issuerAddresses,
+  ]);
+
+  const accounts = attestations[1]; // All accounts that map to the obfuscated identifier under the issuer
+}
+```
+
+  </Step>
+
+</Steps>

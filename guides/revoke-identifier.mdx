@@ -1,0 +1,129 @@
+---
+title: Revoke Identifier
+description: Revoke the registration of the identifier under your issuer using Viem and @celo/identity
+---
+
+When a user wants to change their identifier or their account address in the mapping, the identifier needs to be revoked first and then re-registered again with the new account or the new identifier.
+
+The user might want to do this because they either changed their identifier (Eg: Phone Number) or they want their identifier to point to a new address.
+
+Below is the code snippet to revoke an identifier under your issuer.
+
+<Warning>
+  The user can revoke the identifier themselves without the need of the issuer, it is recommended to monitor the `FederatedAttestations.sol` contract for `AttestationRevoked` event
+</Warning>
+
+### Get obfuscated Id and Revoke Obfuscated Id on FederatedAttestations.sol
+
+    <Tabs>
+      <Tab title="index.js">
+        ```js
+        import { IdentifierPrefix } from "@celo/identity/lib/odis/identifier";
+        import { federatedAttestationsABI } from "@celo/abis";
+        import {
+          createWalletClient
+          getContract,
+          http,
+          Hex,
+          http
+        } from "viem";
+        import { celo, celoAlfajores } from "viem/chains";
+        import { getObfuscatedId } from "./getObfuscatedId";
+
+        const chain =
+          process.env.NEXT_PUBLIC_ENVIRONMENT === "TESTNET" ? celoAlfajores : celo;
+
+        const publicClient = createPublicClient({
+          chain,
+          transport: http(),
+        });
+
+        let wallet = createWalletClient({
+          account,
+          chain,
+          transport: http(),
+        });
+
+        async function getAccountAddress() {
+          return (await wallet.getAddresses())[0];
+        }
+
+        const FA_PROXY_ADDRESS =
+          process.env.NEXT_PUBLIC_ENVIRONMENT === "TESTNET"
+            ? "0x70F9314aF173c246669cFb0EEe79F9Cfd9C34ee3"
+            : "0x0aD5b1d0C25ecF6266Dd951403723B2687d6aff2";
+
+        const NOW_TIMESTAMP = BigInt(Math.floor(new Date().getTime() / 1000)); // Current UNIX timestamp
+
+        const federatedAttestationsContract = getContract({
+          address: FA_PROXY_ADDRESS,
+          abi: federatedAttestationsABI,
+          client: wallet,
+        });
+
+        async function revokeIdentifier(plaintextId, address) {
+
+          const obfuscatedId = await getObfuscatedId(
+            plaintextId,
+            IdentifierPrefix.PHONE_NUMBER
+          );
+
+          const issuerAddress = await getAccountAddress();
+
+          const hash =
+            await federatedAttestationsContract.write.revokeAttestation(
+            [obfuscatedId, issuerAddress, address]
+          );
+
+          const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+          return receipt;
+        }
+        ```
+      </Tab>
+
+      <Tab title="getObfuscatedId.js">
+        ```js
+        import { OdisUtils } from "@celo/identity";
+        import { AuthenticationMethod, OdisContextName } from "@celo/identity/lib/odis/query";
+        import { IdentifierPrefix } from "@celo/identity/lib/odis/identifier";
+
+        const identifierType = IdentifierPrefix.PHONE_NUMBER;
+
+        const SERVICE_CONTEXT =
+          process.env.NEXT_PUBLIC_ENVIRONMENT === "TESTNET"
+          ? OdisContextName.ALFAJORES
+          : OdisContextName.MAINNET;
+
+        const serviceContext = OdisUtils.Query.getServiceContext(SERVICE_CONTEXT);
+
+        const authSigner = {
+          authenticationMethod: AuthenticationMethod.ENCRYPTION_KEY,
+
+          // Use the recommended authentication method to save on ODIS quota
+          // For steps to set up DEK, refer to the provided GitHub link - https://github.com/celo-org/social-connect/blob/main/docs/key-setup.md
+          rawKey: process.env.DEK_PRIVATE_KEY as string,
+        }
+
+        async function getAccountAddress() {
+          return (await wallet.getAddresses())[0];
+        }
+
+        export async function getObfuscatedId(plaintextId) {
+          let accountAddress = await getAccountAddress();
+
+          const { obfuscatedIdentifier } =
+            await OdisUtils.Identifier.getObfuscatedIdentifier(
+              plaintextId,
+              identifierType,
+              accountAddress,
+              authSigner,
+              serviceContext
+            );
+
+          return obfuscatedIdentifier;
+        }
+        ```
+
+      </Tab>
+    </Tabs>

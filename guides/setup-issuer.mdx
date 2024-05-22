@@ -1,0 +1,144 @@
+---
+title: Setup Issuer
+description: Steps to setup your issuer to lookup, register and revoke attestation
+---
+
+### Video Guide
+
+<iframe
+  width="100%"
+  height="400px"
+  src="https://www.youtube.com/embed/_HhIXvN5L5U?si=FLtmKHOxF0ad1Jgg"
+  title="YouTube video player"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+></iframe>
+
+<Note>
+  The following steps to setup issuer requires `celocli` to be installed
+
+Use the following command to install `celocli`.
+
+```bash
+npm i -g @celo/celocli
+```
+
+</Note>
+
+<Steps>
+
+<Step title="Configure the CLI to use the right network">
+
+  <Tabs>
+  <Tab title="Mainnet">
+    ```bash
+    celocli config:set --node wss://forno.celo.org/ws
+    ```
+
+  </Tab>
+  <Tab title="Testnet">
+    ```bash
+    celocli config:set --node wss://alfajores-forno.celo-testnet.org/ws
+    ```
+
+  </Tab>
+  
+</Tabs>
+</Step>
+
+<Step title="Setting up the Issuer account">
+    <Warning>
+      The optional steps below are if you don't intend to use an data encryption key to interact with SocialConnect Protcol. However, it is highly recommended to use DEK.
+    </Warning>
+
+  <Steps>
+    <Step title="Create a new account using celocli">
+      
+      ```bash
+      celocli account:new
+      ```
+
+      You will see five fields of information about this created account in our console: `mnemonic`, `accountAddress`, `privateKey`, `publicKey`, `address`
+
+    </Step>
+
+
+
+
+    <Step title="Exporing Issuer address and private key (optional)">
+
+
+      To avoid confussion by having to copy paste constantly these values for the different accounts, you can use `export` to create a temporal variable of such values.
+
+      ```bash
+      export ISSUER_ADDRESS=address
+      ```
+
+      ```bash
+      export ISSUER_PRIVATE_KEY=privateKey
+      ```
+    </Step>
+
+    <Step title="Register the Issuer Account (optional)">
+      To map an attestation signer or an attestation encryption key the issuer needs to be registered
+
+      <Note>
+        This is an onchain transaction, so you need Celo in your Issuer account.
+      </Note>
+
+      ```bash
+      celocli account:register --from $ISSUER_ADDRESS --privateKey $ISSUER_PRIVATE_KEY
+      ```
+
+    </Step>
+
+    <Step title="Fund the account with cUSD">
+      If you plan to use attestation signer or the DEK (steps below), then the attestation signer will use  the issuer account is the one that will pay quota in cUSD.
+
+      If you want to convert some Celo to cUSD in advance, you can run:
+
+      ```bash
+      celocli exchange:celo --value 1000000000000000000 --from $ISSUER_ADDRESS --privateKey $ISSUER_PRIVATE_KEY
+      ```
+
+      The above example converted 1 Celo. You can find a [tool](https://celoscan.io/unitconverter) to convert the value to wei in the celoscan website.
+
+    </Step>
+
+  </Steps>
+</Step>
+
+<Step title="Registering DEK for the Issuer account (Recommended)">
+
+  <Steps>
+    
+    <Step title="Create a new account using celocli">
+      
+      ```bash
+      celocli account:new 
+      ```
+
+      ```bash
+      export ISSUER_DEK_PUBLIC_KEY=publicKey
+      ```
+
+    </Step>
+
+    <Step title="Register DEK">
+
+      Here `ISSUER_ADDRESS` is the address of the Issuer account we setup in the _"Setting up the Issuer account"_ section, and `ISSUER_PRIVATE_KEY` is the private key of the same account.
+
+      ```bash
+      celocli account:register-data-encryption-key --publicKey $ISSUER_DEK_PUBLIC_KEY --from $ISSUER_ADDRESS --privateKey $ISSUER_PRIVATE_KEY
+      ```
+
+    </Step>
+
+  </Steps>
+
+</Step>
+
+</Steps>
+
+That's it your Issuer account is now ready to [lookup](/guides/lookup-identifier), [register](/guides/register-identifier) and [revoke](/guides/revoke-identifier) atttestations!

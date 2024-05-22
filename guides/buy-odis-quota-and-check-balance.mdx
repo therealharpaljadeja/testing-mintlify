@@ -1,0 +1,187 @@
+---
+title: Buy ODIS Quota & Check Balance
+description: How to buy ODIS Quota and check Quota balance using Viem
+---
+
+When registering or looking up identifiers, one of the steps is to query ODIS for the obfuscated version of the identifier to lookup or register.
+
+Querying ODIS is not free in order to prevent a Rainbow Table attack.
+
+Every query to ODIS costs 1 ODIS quota unit. The price of 1 unit is 0.001 cUSD. The payment model is prepaid meaning one can buy any number of ODIS quota units beforehand and not on the fly when making every request (which is recommend).
+
+The below code snippets can be used to buy the quota units beforehand and check the quota balance. It is recommended to have an internal threhsold for quota units. If the balance falls below the threshold you automatically buy more quota units.
+
+## Buy ODIS Quota Units
+
+<Note>
+You will need `@celo/abis` package for contract abis.
+
+```bash
+npm i @celo/abis
+```
+
+</Note>
+
+```js
+import {
+  createPublicClient,
+  createWalletClient
+  getContract,
+  http,
+  parseEther,
+  Hex,
+  http
+} from "viem";
+import { celo, celoAlfajores } from "viem/chains";
+import { odisPaymentsABI, stableTokenABI } from "@celo/abis";
+
+const account = privateKeyToAccount(process.env.ISSUER_PRIVATE_KEY as Hex);
+
+const publicClient = createPublicClient({
+  chain,
+  transport: http(),
+});
+
+const STABLE_TOKEN_ADDRESS =
+  process.env.NEXT_PUBLIC_ENVIRONMENT === "TESTNET"
+    ? "0x874069Fa1Eb16D44d622F2e0Ca25eeA172369bC1"
+    : "0x765DE816845861e75A25fCA122bb6898B8B1282a";
+
+const ODIS_PAYMENTS_PROXY_ADDRESS =
+  process.env.NEXT_PUBLIC_ENVIRONMENT === "TESTNET"
+    ? "0x645170cdB6B5c1bc80847bb728dBa56C50a20a49"
+    : "0xae6b29f31b96e61dddc792f45fda4e4f0356d0cb";
+
+const chain =
+  process.env.NEXT_PUBLIC_ENVIRONMENT === "TESTNET" ? celoAlfajores : celo;
+
+let wallet = createWalletClient({
+  account,
+  chain,
+  transport: http(),
+});
+
+const stableTokenContract = getContract({
+  address: STABLE_TOKEN_ADDRESS,
+  abi: stableTokenABI,
+  client: wallet,
+});
+
+const odisPaymentsContract = getContract({
+  address: ODIS_PAYMENTS_PROXY_ADDRESS,
+  abi: odisPaymentsABI,
+  client: wallet,
+});
+
+const ONE_CENT_CUSD = parseEther("0.01"); // Represents 0.01 cUSD in wei
+
+async function getAccountAddress() {
+  return (await wallet.getAddresses())[0];
+}
+
+async function topUpODISQuota() {
+
+  // Allowance ODISPayments contract to pull cUSD from Issuer account
+  const approvalTxHash = await stableTokenContract.write.increaseAllowance([
+    ODIS_PAYMENTS_PROXY_ADDRESS,
+    ONE_CENT_CUSD,
+  ]);
+
+  const approvalTxReceipt = publicClient.waitForTransactionReceipt({
+    hash: approvalTxHash,
+  });
+
+  const walletAddress = await getAccountAddress();
+
+  // Buying 10 ODIS Quota units
+  const odisPaymentTxHash = await odisPaymentsContract.write.payInCUSD(
+    [walletAddress, ONE_CENT_CUSD]
+  );
+
+  const odisPaymentTxReceipt = publicClient.waitForTransactionReceipt({
+    hash: odisPaymentTxHash,
+  });
+}
+```
+
+## Check ODIS Quota Balance
+
+<Note>
+  You will need to install `@celo/identity` in order to interact with ODIS API.
+
+```bash
+npm i @celo/identity
+```
+
+</Note>
+
+```js
+import {
+  createWalletClient
+  getContract,
+  http,
+  Hex,
+  http
+} from "viem";
+import { AuthenticationMethod, OdisContextName } from "@celo/identity/lib/odis/query";
+import { OdisUtils } from "@celo/identity";
+import { celo, celoAlfajores } from "viem/chains";
+
+const account = privateKeyToAccount(process.env.ISSUER_PRIVATE_KEY as Hex);
+
+const chain =
+  process.env.NEXT_PUBLIC_ENVIRONMENT === "TESTNET" ? celoAlfajores : celo;
+
+let wallet = createWalletClient({
+  account,
+  chain,
+  transport: http(),
+});
+
+const SERVICE_CONTEXT =
+  process.env.NEXT_PUBLIC_ENVIRONMENT === "TESTNET"
+    ? OdisContextName.ALFAJORES
+    : OdisContextName.MAINNET;
+
+const serviceContext = OdisUtils.Query.getServiceContext(SERVICE_CONTEXT);
+
+const authSigner = {
+  authenticationMethod: AuthenticationMethod.ENCRYPTION_KEY,
+
+// Use the recommended authentication method to save on ODIS quota
+  // For steps to set up DEK, refer to the provided GitHub link - https://github.com/celo-org/social-connect/blob/main/docs/key-setup.md
+  rawKey: process.env.DEK_PRIVATE_KEY as string,
+}
+
+async function getAccountAddress() {
+  return (await wallet.getAddresses())[0];
+}
+
+async function checkODISQuota() {
+  let account = await getAccountAddress();
+
+  const { remainingQuota } = await OdisUtils.Quota.getPnpQuotaStatus(
+      account,
+      authSigner,
+      serviceContext
+    );
+
+    console.log("Remaining Quota", remainingQuota);
+
+    return remainingQuota;
+}
+```
+
+## Checking Quota balance and Top up ODIS Quota
+
+You might want to combine the above 2 functions into a single function like so:
+
+```js
+async function checkAndTopUpOdisQuota() {
+  const remainingQuota = await checkODISQuota();
+
+  if (remainingQuota < 1) {
+    await topUpODISQuota();
+  }
+}
+```
